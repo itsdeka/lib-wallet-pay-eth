@@ -13,10 +13,13 @@
 // limitations under the License.
 
 'use strict'
+const { WalletPay } = require('lib-wallet')
 const { EvmPay } = require('lib-wallet-pay-evm')
 const { GasCurrency } = require('lib-wallet-util-evm')
 const KM = require('./wallet-key-eth.js')
 const FeeEstimate = require('./fee-estimate.js')
+
+const TxEntry = WalletPay.TxEntry
 
 class WalletPayEthereum extends EvmPay {
   constructor (config) {
@@ -78,18 +81,21 @@ class WalletPayEthereum extends EvmPay {
   }
 
   async _storeTx (tx) {
-    const data = {
-      from: tx.from.toLowerCase(),
-      to: tx.to.toLowerCase(),
-      value: new GasCurrency(tx.value, 'base', this.gas_token),
-      height: tx.blockNumber,
+    const txEntry = new TxEntry({
       txid: tx.hash,
-      gas: Number(tx.gas),
-      maxPriorityFeePerGas: Number(tx.maxPriorityFeePerGas),
-      maxFeePerGas: Number(tx.maxFeePerGas)
-    }
-    await this.state.storeTxHistory(data)
-    return data
+      from_address: tx.from.toLowerCase(),
+      to_address: tx.to.toLowerCase(),
+      amount: new GasCurrency(tx.value, 'base'),
+      fee: new GasCurrency(tx.gas * tx.gasPrice, 'base'),
+      fee_rate: new GasCurrency(tx.gasPrice, 'base'),
+      height: Number(tx.blockNumber),
+      direction: await this._getDirection(tx),
+      currency: "ETH"
+    })
+    
+    await this.state.storeTxHistory(txEntry)
+
+    return txEntry
   }
 
   async syncTransactions (opts = {}) {
