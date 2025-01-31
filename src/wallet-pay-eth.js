@@ -15,14 +15,16 @@
 'use strict'
 const { WalletPay } = require('lib-wallet')
 const { EvmPay } = require('lib-wallet-pay-evm')
-const { GasCurrency } = require('lib-wallet-util-evm')
 const KM = require('./wallet-key-eth.js')
 const FeeEstimate = require('./fee-estimate.js')
+const Ethereum = require('./eth.currency.js')
+const TxEntry = WalletPay.TxEntry
 
 const TxEntry = WalletPay.TxEntry
 
 class WalletPayEthereum extends EvmPay {
   constructor (config) {
+    config.GasCurrency = Ethereum
     super(config)
 
     this.web3 = config?.provider?.web3
@@ -44,14 +46,15 @@ class WalletPayEthereum extends EvmPay {
       walletConfig: {
         name: 'hdwallet-eth',
         coinType: "60'",
-        purpose: "44'"
+        purpose: "44'",
+        gapLimit: 5
       },
       stateConfig: {
-        name: "state-eth"
+        name: 'state-eth'
       },
       newTxCallback: async (res, token) => {
         const tx = await token.updateTxEvent(res)
-        
+
         return {
           token: token.name,
           address: res.address,
@@ -68,7 +71,9 @@ class WalletPayEthereum extends EvmPay {
   async _syncPath (addr, signal, startFrom) {
     const provider = this.provider
     const path = addr.path
-    const tx = await provider.getTransactionsByAddress({ address: addr.address, fromBlock: startFrom })
+    const tx = await provider.retryable(() => {
+      return provider.getTransactionsByAddress({ address: addr.address, fromBlock: startFrom })
+    })
     if (tx.length === 0) {
       this.emit('synced-path', path)
       return signal.noTx
@@ -77,7 +82,11 @@ class WalletPayEthereum extends EvmPay {
     for (const t of tx) {
       await this._storeTx(t)
     }
-    return tx.length > 0 ? signal.hasTx : signal.noTx
+    if(tx.length > 0) { 
+      await this._hdWallet.addAddress(addr)
+      return signal.hasTx
+    }
+    return signal.noTx
   }
 
   async _storeTx (tx) {
@@ -112,7 +121,7 @@ class WalletPayEthereum extends EvmPay {
 
     const latestBlock = Number(await this.web3.eth.getBlockNumber())
 
-    await state._hdWallet.eachAccount(async (syncState, signal) => {
+    await state._hdWallet.eachExtAccount(async (syncState, signal) => {
       if (this._halt) return signal.stop
       const { addr } = keyManager.addrFromPath(syncState.path)
       if (opts.token) return await this.callToken('syncPath', opts.token, [addr, signal, this.startSyncTxFromBlock])
@@ -143,7 +152,7 @@ class WalletPayEthereum extends EvmPay {
 
   async _getSignedTx (outgoing) {
     const { web3 } = this.provider
-    const amount = new GasCurrency(outgoing.amount, outgoing.unit)
+    const amount = new Ethereum(outgoing.amount, outgoing.unit)
     let sender
 
     if (!outgoing.sender) {
@@ -155,7 +164,7 @@ class WalletPayEthereum extends EvmPay {
 
     if (!sender) throw new Error('insufficient balance or invalid sender')
 
-    let gasLimit = outgoing.gasLimit;
+    let gasLimit = outgoing.gasLimit
 
     if (!gasLimit) {
       gasLimit = await web3.eth.estimateGas({
@@ -197,7 +206,7 @@ class WalletPayEthereum extends EvmPay {
   * @return {Promise} Promise - when tx is confirmed
   */
   sendTransaction (opts, outgoing) {
-    const _getSignedTxWrapper = (outgoing) => this.callToken('_getSignedTx', opts.token, [outgoing]) 
+    const _getSignedTxWrapper = (outgoing) => this.callToken('_getSignedTx', opts.token, [outgoing])
 
     const getSignedTx = opts.token ? _getSignedTxWrapper : this._getSignedTx
 
@@ -205,15 +214,15 @@ class WalletPayEthereum extends EvmPay {
 
     const p = new Promise((resolve, reject) => {
       (
-        outgoing.sender ?
-          this.updateBalance(opts, outgoing.sender) :
-          this.updateBalances(opts)
+        outgoing.sender
+          ? this.updateBalance(opts, outgoing.sender)
+          : this.updateBalances(opts)
       )
-        .then(() => 
+        .then(() =>
           getSignedTx.apply(this, [outgoing]).then(({ signed }) => {
             this.provider.web3.eth.sendSignedTransaction(signed.rawTransaction)
               .on('receipt', (tx) => { if (notify) return notify(tx) })
-              .once('confirmation', (tx) => { resolve(tx)})
+              .once('confirmation', (tx) => { resolve(tx) })
               .on('error', (err) => reject(err))
           }))
     })
