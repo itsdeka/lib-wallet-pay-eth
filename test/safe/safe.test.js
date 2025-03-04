@@ -14,28 +14,19 @@
 "use strict";
 
 const { test } = require("brittle");
-const EthPay = require("../../src/wallet-pay-eth.js");
-const KeyManager = require("../../src/wallet-key-eth.js");
-const { WalletStoreHyperbee } = require("lib-wallet-store");
 const BIP39Seed = require("wallet-seed-bip39");
 const Provider = require("lib-wallet-pay-evm/src/provider.js");
+const ERC20 = require("lib-wallet-pay-evm/src/erc20.js");
+const { Erc20CurrencyFactory } = require("lib-wallet-util-evm");
+const { WalletStoreHyperbee } = require("lib-wallet-store");
+const EthPay = require("../../src/wallet-pay-eth.js");
+const KeyManager = require("../../src/wallet-key-eth.js");
 const opts = require("./safe.opts.json");
+const { ERC20 } = require("lib-wallet-pay-evm");
 
 const TMP_STORE = "./tmp";
 
 const ABI = [
-  {
-    "constant": false,
-    "inputs": [
-      {"name": "_to", "type": "address"},
-      {"name": "_value", "type": "uint256"}
-    ],
-    "name": "transfer",
-    "outputs": [],
-    "payable": false,
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
   {
     "constant": true,
     "inputs": [
@@ -50,6 +41,13 @@ const ABI = [
     "type": "function"
   }
 ];
+
+const TestToken = new Erc20CurrencyFactory({
+  name: "TestToken",
+  base_name: "TestToken",
+  contract_address: opts.safe.paymasterTokenAddress,
+  decimal_places: 6
+});
 
 async function activeWallet(param = {}) {
   let provider = param.provider;
@@ -82,7 +80,7 @@ async function activeWallet(param = {}) {
     store,
     network: "regtest",
     token: [
-
+      new ERC20({ currency: TestToken })
     ],
     gas_token: {
       name: "ETH",
@@ -96,7 +94,7 @@ async function activeWallet(param = {}) {
   return eth;
 }
 
-test("transfer 1 token from a safe account to another address", async (t) => {
+test("transfer 1 token from an abstracted account to another address", async (t) => {
   async function getBalance(address, toAddress) {
     return {
       address: await token.methods.balanceOf(address).call(),
@@ -113,29 +111,35 @@ test("transfer 1 token from a safe account to another address", async (t) => {
 
   const web3 = eth.web3;
 
-  const safeAddress = await eth.getSafeAddress(address);
+  const abstractedAddress = await eth.getAbstractedAddress(address);
 
-  t.comment("Safe address:", safeAddress);
+  t.comment("Abstracted address:", abstractedAddress);
 
-  t.comment("Make sure that the safe address has enough token funds to repay the paymaster!");
+  t.comment("Make sure that the abstracted address has enough token funds to repay the paymaster!");
 
   const { paymasterTokenAddress } = opts.safe;
   const token = new web3.eth.Contract(ABI, paymasterTokenAddress);
 
+  const tx = {
+    token: "TestToken",
+    to: toAddress,
+    value: amount
+  };
+
   const initialBalance = await getBalance(address, toAddress);
 
-  const hash = await eth.sendUserOperation(address, {
-    to: paymasterTokenAddress,
-    value: 0,
-    data: token.methods.transfer(toAddress, amount).encodeABI()
-  });
+  const gasCost = await eth.estimateGaslessTransactionGasCost(address, tx);
 
-  t.comment("User operation hash:", hash);
+  t.comment("Gasless transaction gas cost estimation (in wei):", gasCost);
 
-  t.comment("Waiting for the user operation to be included in a block...");
+  const id = await eth.sendGaslessTokenTransfer(address, tx);
+
+  t.comment("Gasless transaction id:", id);
+
+  t.comment("Waiting for the gasless transaction to be included in a block...");
 
   while (true) {
-    const receipt = await eth.getUserOperationReceipt(hash);
+    const receipt = await eth.getGaslessTransactionReceipt(id);
 
     if (receipt)
       break;
@@ -146,13 +150,13 @@ test("transfer 1 token from a safe account to another address", async (t) => {
 
   const balance = await getBalance(address, toAddress);
 
-  t.comment("User operation receipt found!")
+  t.comment("Gasless transaction receipt found!")
 
-  const fee =  initialBalance.address - balance.address - amount;
+  const fee = initialBalance.address - balance.address - amount;
    
-  t.comment(`The user operation cost ${fee} tokens to the user.`);
+  t.comment(`The gasless transaction cost ${fee} tokens to the user.`);
 
-  t.ok(initialBalance.address - balance.address >= amount, 
+  t.ok(initialBalance.address - balance.address > amount, 
     `${amount} tokens have been transferred out of the safe account.`);
 
   t.ok(balance.toAddress - initialBalance.toAddress == amount,
