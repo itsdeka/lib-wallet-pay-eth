@@ -14,9 +14,7 @@
 'use strict'
 
 const EthPay = require('./src/wallet-pay-eth')
-const EthKey = require('./src/wallet-key-eth')
 
 module.exports = {
-  EthPay,
-  EthKey
+  EthPay
 }

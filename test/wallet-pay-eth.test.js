@@ -15,10 +15,10 @@
 
 const { test, solo } = require("brittle");
 const EthPay = require("../src/wallet-pay-eth.js");
-const KeyManager = require("../src/wallet-key-eth.js");
 const { WalletStoreHyperbee } = require("lib-wallet-store");
 const BIP39Seed = require("wallet-seed-bip39");
 const Provider = require("lib-wallet-pay-evm/src/provider.js");
+const KeyManager = require("lib-wallet-pay-evm/src/wallet-key-evm.js");
 const { ethereum: TestNode } = require("wallet-lib-test-tools");
 const { Erc20CurrencyFactory } = require("lib-wallet-util-evm");
 const Ethereum = require("../src/eth.currency.js");
@@ -46,7 +46,6 @@ async function activeWallet(param = {}) {
   await store.init();
 
   const eth = new EthPay({
-    asset_name: "eth",
     provider,
     key_manager: new KeyManager({
       seed: param.newWallet
@@ -63,11 +62,6 @@ async function activeWallet(param = {}) {
         currency: USDT,
       }),
     ],
-    gas_token: {
-      name: "ETH",
-      base_name: "wei",
-      decimals: 18,
-    },
     auth_signer_private_key: "a70a71add3092e3c63f11545a62024d1ff3ff55a202eca094a2d5832c470bd29"
   });
   await eth.initialize({});
@@ -99,9 +93,6 @@ test("Create an instances of WalletPayEth", async function (t) {
   });
   await provider.connect();
   const eth = new EthPay({
-    asset_name: "ETH",
-    asset_base_name: "wei",
-    asset_decimals: 18,
     provider,
     key_manager: new KeyManager({
       seed: await BIP39Seed.generate(),
@@ -157,7 +148,7 @@ async function syncTest(t, sync) {
       }, 1000); // 1 second timeout
     });
 
-    await Promise.race([eth._onNewTx(), firstTxPromise]);
+    await Promise.race([eth.onNewTx(), firstTxPromise]);
 
     const secondTxPromise = new Promise((resolve, reject) => {
       setTimeout(async () => {
@@ -166,7 +157,7 @@ async function syncTest(t, sync) {
       }, 1000); // 1 second timeout
     });
 
-    await Promise.race([eth._onNewTx(), secondTxPromise]);
+    await Promise.race([eth.onNewTx(), secondTxPromise]);
   }
 
   const bal = await eth.getBalance({}, addr.address);
@@ -399,7 +390,7 @@ test("listen to last address on start", async (t) => {
       }, 1000); // 1 second timeout
     });
 
-    await Promise.race([eth._onNewTx(), minePromise]);
+    await Promise.race([eth.onNewTx(), minePromise]);
 
     const t0 = t.test("getTransactions");
     const amts = [sendAmount, amt2];

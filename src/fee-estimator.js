@@ -16,7 +16,7 @@
 'use strict'
 const https = require('https')
 
-class Blocknative {
+class FeeEstimator {
   constructor (config = {}) {
     this.hostname = config.hostname || 'api.blocknative.com'
     this.path = config.path || '/gasprices/blockprices'
@@ -64,4 +64,4 @@ class Blocknative {
   }
 }
 
-module.exports = Blocknative
+module.exports = FeeEstimator

@@ -16,6 +16,8 @@ const { GasCurrencyBase } = require('lib-wallet-util-evm')
 
 
 class Ethereum extends GasCurrencyBase {
+  static name = "ETH"
+
   constructor () {
     super(...arguments)
     const opts = arguments[2] || {}
