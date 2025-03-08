@@ -22,7 +22,7 @@ class WalletPayEthereum extends EvmPay {
     super({
       ...config,
       asset_name: "eth",
-      chainId: 0,
+      chainId: 1,
       startSyncTxFromBlock: 6_810_041,
       feeEstimator: new FeeEstimator(),
       GasCurrency: Ethereum,
