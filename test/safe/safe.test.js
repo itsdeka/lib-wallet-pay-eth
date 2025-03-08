@@ -17,10 +17,10 @@ const { test } = require("brittle");
 const BIP39Seed = require("wallet-seed-bip39");
 const Provider = require("lib-wallet-pay-evm/src/provider.js");
 const ERC20 = require("lib-wallet-pay-evm/src/erc20.js");
+const KeyManager = require("lib-wallet-pay-evm/src/wallet-key-evm.js");
 const { Erc20CurrencyFactory } = require("lib-wallet-util-evm");
 const { WalletStoreHyperbee } = require("lib-wallet-store");
 const EthPay = require("../../src/wallet-pay-eth.js");
-const KeyManager = require("../../src/wallet-key-eth.js");
 const opts = require("./safe.opts.json");
 const { ERC20 } = require("lib-wallet-pay-evm");
 
@@ -67,7 +67,6 @@ async function activeWallet(param = {}) {
   await store.init();
 
   const eth = new EthPay({
-    asset_name: "eth",
     provider,
     key_manager: new KeyManager({
       seed: param.newWallet
@@ -82,11 +81,6 @@ async function activeWallet(param = {}) {
     token: [
       new ERC20({ currency: TestToken })
     ],
-    gas_token: {
-      name: "ETH",
-      base_name: "wei",
-      decimals: 18,
-    },
     auth_signer_private_key: "a70a71add3092e3c63f11545a62024d1ff3ff55a202eca094a2d5832c470bd29",
     safe: opts.safe
   });
@@ -121,18 +115,18 @@ test("transfer 1 token from an abstracted account to another address", async (t)
   const token = new web3.eth.Contract(ABI, paymasterTokenAddress);
 
   const tx = {
-    token: "TestToken",
-    to: toAddress,
-    value: amount
+    to: paymasterTokenAddress,
+    value: 0,
+    data: token.methods.transfer(toAddress, amount).encodeABI()
   };
 
   const initialBalance = await getBalance(address, toAddress);
 
-  const gasCost = await eth.estimateGaslessTransactionGasCost(address, tx);
+  const gasCost = await eth.estimateGaslessTransactionGasCost(address, [tx]);
 
   t.comment("Gasless transaction gas cost estimation (in wei):", gasCost);
 
-  const id = await eth.sendGaslessTokenTransfer(address, tx);
+  const id = await eth.sendGaslessTransaction(address, [tx]);
 
   t.comment("Gasless transaction id:", id);
 
