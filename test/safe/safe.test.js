@@ -115,18 +115,18 @@ test("transfer 1 token from an abstracted account to another address", async (t)
   const token = new web3.eth.Contract(ABI, paymasterTokenAddress);
 
   const tx = {
-    token: "TestToken",
-    to: toAddress,
-    value: amount
+    to: paymasterTokenAddress,
+    value: 0,
+    data: token.methods.transfer(toAddress, amount).encodeABI()
   };
 
   const initialBalance = await getBalance(address, toAddress);
 
-  const gasCost = await eth.estimateGaslessTransactionGasCost(address, tx);
+  const gasCost = await eth.estimateGaslessTransactionGasCost(address, [tx]);
 
   t.comment("Gasless transaction gas cost estimation (in wei):", gasCost);
 
-  const id = await eth.sendGaslessTokenTransfer(address, tx);
+  const id = await eth.sendGaslessTransaction(address, [tx]);
 
   t.comment("Gasless transaction id:", id);
 
